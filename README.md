@@ -26,7 +26,6 @@ You can run and test the script directly without building or installing the pack
    chmod +x usr/local/bin/uninstaller
    ```
 
-2. Run the script:
 2. Run the script (automatically uses your system locale):
    ```bash
    ./usr/local/bin/uninstaller

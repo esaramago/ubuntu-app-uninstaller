@@ -6,6 +6,8 @@ TXT_SEARCH_PROMPT="Nome da aplicação"
 TXT_BTN_SEARCH="Procurar"
 TXT_BTN_CANCEL="Cancelar"
 
+TXT_SEARCH_MIN_CHARS="A pesquisa tem de ter, no mínimo, 2 caracteres."
+
 TXT_TABLE_TITLE="Resultados da Pesquisa"
 TXT_TABLE_HEADER="Selecione o pacote que deseja desinstalar:"
 TXT_COL_APP="Aplicação"

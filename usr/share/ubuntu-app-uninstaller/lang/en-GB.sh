@@ -6,6 +6,8 @@ TXT_SEARCH_PROMPT="Application name"
 TXT_BTN_SEARCH="Search"
 TXT_BTN_CANCEL="Cancel"
 
+TXT_SEARCH_MIN_CHARS="The search term must have at least 2 characters."
+
 TXT_TABLE_TITLE="Search Results"
 TXT_TABLE_HEADER="Select the package you want to uninstall:"
 TXT_COL_APP="Application"
