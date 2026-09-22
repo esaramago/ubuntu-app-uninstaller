@@ -1,56 +1,126 @@
 #!/bin/bash
 
-# Limpa variáveis de ambiente herdadas de aplicações Snap/Flatpak (ex: VS Code)
-# que causam conflito com bibliotecas GTK/glibc do sistema host ao abrir o terminal
+# Clear environment variables inherited from Snap/Flatpak applications (e.g., VS Code)
+# that may cause conflicts with host system GTK/glibc libraries when opening the terminal
 unset GTK_PATH GTK_EXE_PREFIX GTK_IM_MODULE_FILE GIO_MODULE_DIR GSETTINGS_SCHEMA_DIR GDK_PIXBUF_MODULE_FILE GDK_PIXBUF_MODULEDIR LOCPATH
 
-# 1. Pede o nome ou parte do nome da aplicação
+# 1. Prompt for application name or search term
 APP=$(zenity --entry --title="Desinstalador" --text="Nome da aplicação" 2>/dev/null)
 [ -z "$APP" ] && exit 0
 
-# 2. Procura com 'grep -i' e formata a saída em linhas (Célula 1 \n Célula 2) para o Zenity construir a tabela
-# - Snap: O nome do pacote está na coluna 1
-SNAP_RES=$(snap list 2>/dev/null | tail -n +2 | grep -i "$APP" | awk '{print "Snap\n" $1}')
+export APP
 
-# - APT: O nome do pacote está na coluna 2 (filtramos apenas os instalados com "^ii")
-APT_RES=$(dpkg -l 2>/dev/null | grep "^ii" | grep -i "$APP" | awk '{print "Apt\n" $2}')
+# 2. Search package sources (Flatpak, Snap, APT)
+# Format output in sequential lines (Application \n Package \n Version \n Format) for Zenity table
 
-# - Flatpak: O ID do pacote necessário para desinstalar está na coluna 2
-FLATPAK_RES=$(flatpak list 2>/dev/null | grep -i "$APP" | awk '{print "Flatpak\n" $2}')
+# - Flatpak: retrieve Name, Application ID, and Version
+FLATPAK_RES=""
+if command -v flatpak >/dev/null 2>&1; then
+    FLATPAK_RES=$(flatpak list --columns=name:f,application:f,version:f 2>/dev/null | awk -F'\t' '{
+        app_name = ($1 != "" ? $1 : "-")
+        pkg = ($2 != "" ? $2 : "-")
+        ver = ($3 != "" ? $3 : "-")
+        full = app_name " " pkg
+        if (index(tolower(full), tolower(ENVIRON["APP"])) > 0) {
+            print app_name "\n" pkg "\n" ver "\nFlatpak"
+        }
+    }')
+fi
 
-# Agrupa todos os resultados e remove linhas vazias
-OPCOES=$(echo -e "$SNAP_RES\n$APT_RES\n$FLATPAK_RES" | awk NF)
+# - Snap: retrieve Application Name (via desktop file or snap name), Package, and Version
+SNAP_RES=""
+if command -v snap >/dev/null 2>&1; then
+    SNAP_RES=$(
+        snap list 2>/dev/null | tail -n +2 | while read -r pkg ver rest; do
+            [ -z "$pkg" ] && continue
+            desktop=$(ls /var/lib/snapd/desktop/applications/${pkg}_*.desktop /var/lib/snapd/desktop/applications/${pkg}.desktop 2>/dev/null | head -n 1)
+            app_name=""
+            if [ -n "$desktop" ] && [ -f "$desktop" ]; then
+                app_name=$(grep -m 1 "^Name=" "$desktop" 2>/dev/null | cut -d= -f2-)
+            fi
+            [ -z "$app_name" ] && app_name="$pkg"
+            [ -z "$ver" ] && ver="-"
+            full="$app_name $pkg"
+            if echo "$full" | grep -qi -F "$APP"; then
+                printf "%s\n%s\n%s\nSnap\n" "$app_name" "$pkg" "$ver"
+            fi
+        done
+    )
+fi
 
-# Se não encontrar nada, avisa e sai
+# - APT: map system .desktop files to get friendly Name, Package, and Version
+APT_RES=""
+if command -v dpkg-query >/dev/null 2>&1; then
+    map_data=$(
+        while IFS=: read -r pkg desktop; do
+            pkg="${pkg%%:*}"
+            desktop="${desktop#"${desktop%%[![:space:]]*}"}"
+            if [ -f "$desktop" ]; then
+                name=$(grep -m 1 "^Name=" "$desktop" 2>/dev/null | cut -d= -f2-)
+                [ -n "$name" ] && printf "%s\t%s\n" "$pkg" "$name"
+            fi
+        done < <(dpkg -S /usr/share/applications/*.desktop 2>/dev/null)
+    )
+
+    APT_RES=$(awk -F'\t' '
+        NR == FNR {
+            if (!($1 in names)) names[$1] = $2
+            next
+        }
+        $1 == "installed" {
+            pkg = $2
+            ver = ($3 != "" ? $3 : "-")
+            summary = $4
+            name = (pkg in names ? names[pkg] : pkg)
+            full = name " " pkg " " summary
+            if (index(tolower(full), tolower(ENVIRON["APP"])) > 0) {
+                print name "\n" pkg "\n" ver "\nApt"
+            }
+        }
+    ' <(echo "$map_data") <(dpkg-query -W -f='${db:Status-Status}\t${Package}\t${Version}\t${binary:Summary}\n' 2>/dev/null))
+fi
+
+# Aggregate all results and remove empty lines
+OPCOES=$(echo -e "$FLATPAK_RES\n$SNAP_RES\n$APT_RES" | awk NF)
+
+# If no packages found, display warning and exit
 if [ -z "$OPCOES" ]; then
     zenity --error --text="Nenhum pacote encontrado para o termo '$APP'." 2>/dev/null
     exit 0
 fi
 
-# 3. Cria a tabela gráfica. --print-column=ALL devolve "Formato|Pacote" quando escolhe a linha.
+# 3. Create GUI list dialog with Application Name, Package Name, Version, and Format
 SELECAO=$(echo -e "$OPCOES" | zenity --list --title="Resultados da Pesquisa" \
     --text="Selecione o pacote que deseja desinstalar:" \
-    --column="Formato" --column="Pacote" \
+    --column="Aplicação" --column="Pacote" --column="Versão" --column="Formato" \
     --print-column=ALL \
-    --width=500 --height=400 \
+    --width=750 --height=450 \
     --ok-label="🗑️ Desinstalar" 2>/dev/null)
     
 [ -z "$SELECAO" ] && exit 0
 
-# 4. Separa a escolha pelo caractere '|'
-FORMATO=$(echo "$SELECAO" | cut -d'|' -f1)
+# 4. Extract fields using delimiter '|'
+APP_NAME=$(echo "$SELECAO" | cut -d'|' -f1)
 PACOTE=$(echo "$SELECAO" | cut -d'|' -f2)
+VERSAO=$(echo "$SELECAO" | cut -d'|' -f3)
+FORMATO=$(echo "$SELECAO" | cut -d'|' -f4)
 
-# 5. Pede confirmação antes de desinstalar
+# 5. Ask confirmation before uninstalling
+if [ "$APP_NAME" != "$PACOTE" ] && [ -n "$APP_NAME" ] && [ "$APP_NAME" != "-" ]; then
+    MSG_CONFIRM="Tem a certeza de que deseja desinstalar <b>$APP_NAME</b> (pacote: <i>$PACOTE</i>, v$VERSAO) [$FORMATO]?\nEsta ação pode remover dados associados."
+else
+    MSG_CONFIRM="Tem a certeza de que deseja desinstalar o pacote <b>$PACOTE</b> (v$VERSAO) [$FORMATO]?\nEsta ação pode remover dados associados."
+fi
+
 zenity --question --title="Confirmar Desinstalação" \
-    --text="Tem a certeza de que deseja desinstalar o pacote <b>$PACOTE</b> ($FORMATO)?\nEsta ação pode remover dados associados." \
+    --text="$MSG_CONFIRM" \
     --ok-label="🗑️ Sim, Desinstalar" \
     --cancel-label="Cancelar" \
     --default-cancel 2>/dev/null
 
 [ $? -ne 0 ] && exit 0
 
-# 6. Executa a desinstalação no terminal de acordo com o formato
+# 6. Run uninstallation in terminal according to package format
 case "$FORMATO" in
     Snap) gnome-terminal -- bash -c "sudo snap remove $PACOTE; echo ''; read -p 'Concluído! Pressione Enter para sair...'" ;;
     Apt) gnome-terminal -- bash -c "sudo apt remove $PACOTE; echo ''; read -p 'Concluído! Pressione Enter para sair...'" ;;
