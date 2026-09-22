@@ -15,7 +15,7 @@ while true; do
     export APP
 
     # 2. Search package sources (Flatpak, Snap, APT)
-    # Format output in sequential lines (Application \n Package \n Version \n Format) for Zenity table
+    # Format output in sequential lines (Application \n Package \n Version \n Format \n System) for Zenity table
 
     # - Flatpak: retrieve Name, Application ID, and Version
     FLATPAK_RES=""
@@ -26,12 +26,12 @@ while true; do
             ver = ($3 != "" ? $3 : "-")
             full = app_name " " pkg
             if (index(tolower(full), tolower(ENVIRON["APP"])) > 0) {
-                print app_name "\n" pkg "\n" ver "\nFlatpak"
+                print app_name "\n" pkg "\n" ver "\nFlatpak\n-"
             }
         }')
     fi
 
-    # - Snap: retrieve Application Name (via desktop file or snap name), Package, and Version
+    # - Snap: retrieve Application Name (via desktop file or snap name), Package, Version, and System status
     SNAP_RES=""
     if command -v snap >/dev/null 2>&1; then
         SNAP_RES=$(
@@ -46,13 +46,24 @@ while true; do
                 [ -z "$ver" ] && ver="-"
                 full="$app_name $pkg"
                 if echo "$full" | grep -qi -F "$APP"; then
-                    printf "%s\n%s\n%s\nSnap\n" "$app_name" "$pkg" "$ver"
+                    is_system="-"
+                    case "$pkg" in
+                        snapd|core|core[0-9]*|bare|gtk-common-themes|gnome-[0-9]*)
+                            is_system="🔴 Sistema"
+                            ;;
+                        *)
+                            if echo "$rest" | grep -qi -E "\b(base|snapd)\b"; then
+                                is_system="🔴 Sistema"
+                            fi
+                            ;;
+                    esac
+                    printf "%s\n%s\n%s\nSnap\n%s\n" "$app_name" "$pkg" "$ver" "$is_system"
                 fi
             done
         )
     fi
 
-    # - APT: map system .desktop files to get friendly Name, Package, and Version
+    # - APT: map system .desktop files to get friendly Name, Package, Version, and System status
     APT_RES=""
     if command -v dpkg-query >/dev/null 2>&1; then
         map_data=$(
@@ -66,22 +77,42 @@ while true; do
             done < <(dpkg -S /usr/share/applications/*.desktop 2>/dev/null)
         )
 
+        # Collect dependencies from base system metapackages
+        sys_deps=$(
+            {
+                dpkg-query -W -f='${Package}\n' ubuntu-desktop-minimal ubuntu-desktop ubuntu-standard ubuntu-minimal 2>/dev/null
+                apt-cache depends ubuntu-desktop-minimal ubuntu-desktop ubuntu-standard ubuntu-minimal 2>/dev/null | awk '/^[[:space:]]*(Depends|Recommends):/ { gsub(/[<>]/, "", $2); print $2 }'
+                apt-cache depends --recurse --no-recommends --no-suggests --no-conflicts --no-breaks --no-replaces --no-enhances ubuntu-desktop-minimal ubuntu-desktop ubuntu-standard ubuntu-minimal 2>/dev/null | awk '/^[[:space:]]*Depends:/ { gsub(/[<>]/, "", $2); print $2 }'
+            } | sort -u
+        )
+
         APT_RES=$(awk -F'\t' '
-            NR == FNR {
+            FNR == 1 { file_idx++ }
+            file_idx == 1 {
+                if ($1 != "") sys_pkgs[$1] = 1
+                next
+            }
+            file_idx == 2 {
                 if (!($1 in names)) names[$1] = $2
                 next
             }
-            $1 == "installed" {
-                pkg = $2
-                ver = ($3 != "" ? $3 : "-")
-                summary = $4
-                name = (pkg in names ? names[pkg] : pkg)
-                full = name " " pkg " " summary
-                if (index(tolower(full), tolower(ENVIRON["APP"])) > 0) {
-                    print name "\n" pkg "\n" ver "\nApt"
+            file_idx == 3 {
+                if ($1 == "installed") {
+                    pkg = $2
+                    ver = ($3 != "" ? $3 : "-")
+                    summary = $4
+                    prio = $5
+                    essential = $6
+                    protected = $7
+                    name = (pkg in names ? names[pkg] : pkg)
+                    full = name " " pkg " " summary
+                    if (index(tolower(full), tolower(ENVIRON["APP"])) > 0) {
+                        is_sys = (prio == "required" || prio == "important" || essential == "yes" || protected == "yes" || (pkg in sys_pkgs) ? "🔴 Sistema" : "-")
+                        print name "\n" pkg "\n" ver "\nApt\n" is_sys
+                    }
                 }
             }
-        ' <(echo "$map_data") <(dpkg-query -W -f='${db:Status-Status}\t${Package}\t${Version}\t${binary:Summary}\n' 2>/dev/null))
+        ' <(echo "$sys_deps") <(echo "$map_data") <(dpkg-query -W -f='${db:Status-Status}\t${Package}\t${Version}\t${binary:Summary}\t${Priority}\t${Essential}\t${Protected}\n' 2>/dev/null))
     fi
 
     # Aggregate all results and remove empty lines
@@ -96,12 +127,12 @@ while true; do
     break
 done
 
-# 3. Create GUI list dialog with Application Name, Package Name, Version, and Format
+# 3. Create GUI list dialog with Application Name, Package Name, Version, Format, and System
 SELECAO=$(echo -e "$OPCOES" | zenity --list --title="Resultados da Pesquisa" \
     --text="Selecione o pacote que deseja desinstalar:" \
-    --column="Aplicação" --column="Pacote" --column="Versão" --column="Formato" \
+    --column="Aplicação" --column="Pacote" --column="Versão" --column="Formato" --column="Sistema" \
     --print-column=ALL \
-    --width=750 --height=450 \
+    --width=820 --height=450 \
     --ok-label="🗑️ Desinstalar" 2>/dev/null)
     
 [ -z "$SELECAO" ] && exit 0
@@ -111,12 +142,18 @@ APP_NAME=$(echo "$SELECAO" | cut -d'|' -f1)
 PACOTE=$(echo "$SELECAO" | cut -d'|' -f2)
 VERSAO=$(echo "$SELECAO" | cut -d'|' -f3)
 FORMATO=$(echo "$SELECAO" | cut -d'|' -f4)
+SISTEMA=$(echo "$SELECAO" | cut -d'|' -f5)
 
 # 5. Ask confirmation before uninstalling
 if [ "$APP_NAME" != "$PACOTE" ] && [ -n "$APP_NAME" ] && [ "$APP_NAME" != "-" ]; then
     MSG_CONFIRM="Tem a certeza de que deseja desinstalar <b>$APP_NAME</b> (pacote: <i>$PACOTE</i>, v$VERSAO) [$FORMATO]?\nEsta ação pode remover dados associados."
 else
     MSG_CONFIRM="Tem a certeza de que deseja desinstalar o pacote <b>$PACOTE</b> (v$VERSAO) [$FORMATO]?\nEsta ação pode remover dados associados."
+fi
+
+# Add warning if it is a system application
+if [[ "$SISTEMA" == *"Sistema"* ]]; then
+    MSG_CONFIRM="<span foreground='red'><b>⚠️ ATENÇÃO: Esta é uma aplicação de sistema!</b>\nA sua desinstalação pode danificar ou tornar o sistema instável.</span>\n\n$MSG_CONFIRM"
 fi
 
 zenity --question --title="Confirmar Desinstalação" \
