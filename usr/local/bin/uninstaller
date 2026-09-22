@@ -194,50 +194,61 @@ while true; do
         continue
     fi
 
-    break
+    # Inner navigation loop for results list and confirmation to support returning to previous screens
+    while true; do
+        # 3. Create GUI list dialog with Application Name, Package Name, Version, Format, and System
+        # Cancel button is positioned on the left, so we use TXT_BTN_BACK here
+        SELECAO=$(echo -e "$OPCOES" | zenity --list --title="$TXT_TABLE_TITLE" \
+            --text="$TXT_TABLE_HEADER" \
+            --column="$TXT_COL_APP" --column="$TXT_COL_PKG" --column="$TXT_COL_VER" --column="$TXT_COL_FORMAT" --column="$TXT_COL_SYSTEM" \
+            --print-column=ALL \
+            --width=820 --height=450 \
+            --ok-label="$TXT_BTN_UNINSTALL" \
+            --cancel-label="$TXT_BTN_BACK" 2>/dev/null)
+        ZENITY_RET=$?
+
+        # If user clicked "Back" (left button) or closed the dialog, return to search entry dialog
+        if [ $ZENITY_RET -ne 0 ] || [ -z "$SELECAO" ]; then
+            break
+        fi
+
+        # 4. Extract fields using delimiter '|'
+        APP_NAME=$(echo "$SELECAO" | cut -d'|' -f1)
+        PACOTE=$(echo "$SELECAO" | cut -d'|' -f2)
+        VERSAO=$(echo "$SELECAO" | cut -d'|' -f3)
+        FORMATO=$(echo "$SELECAO" | cut -d'|' -f4)
+        SISTEMA=$(echo "$SELECAO" | cut -d'|' -f5)
+
+        # 5. Ask confirmation before uninstalling
+        if [ "$APP_NAME" != "$PACOTE" ] && [ -n "$APP_NAME" ] && [ "$APP_NAME" != "-" ]; then
+            MSG_CONFIRM=$(printf "$TXT_CONFIRM_MSG_APP" "$APP_NAME" "$PACOTE" "$VERSAO" "$FORMATO")
+        else
+            MSG_CONFIRM=$(printf "$TXT_CONFIRM_MSG_PKG" "$PACOTE" "$VERSAO" "$FORMATO")
+        fi
+
+        # Add warning if it is a system application (indicated by red circle)
+        if [[ "$SISTEMA" == *"🔴"* ]]; then
+            MSG_CONFIRM="$TXT_CONFIRM_SYSTEM_WARN\n\n$MSG_CONFIRM"
+        fi
+
+        zenity --question --title="$TXT_CONFIRM_TITLE" \
+            --text="$MSG_CONFIRM" \
+            --ok-label="$TXT_BTN_CONFIRM_YES" \
+            --cancel-label="$TXT_BTN_CANCEL" \
+            --default-cancel 2>/dev/null
+
+        # If user clicked "Cancel" on confirmation, return to package list
+        if [ $? -ne 0 ]; then
+            continue
+        fi
+
+        # 6. Run uninstallation in terminal according to package format
+        case "$FORMATO" in
+            Snap) gnome-terminal -- bash -c "sudo snap remove $PACOTE; echo ''; read -p '$TXT_TERMINAL_EXIT'" ;;
+            Apt) gnome-terminal -- bash -c "sudo apt remove $PACOTE; echo ''; read -p '$TXT_TERMINAL_EXIT'" ;;
+            Flatpak) gnome-terminal -- bash -c "sudo flatpak uninstall $PACOTE; echo ''; read -p '$TXT_TERMINAL_EXIT'" ;;
+        esac
+
+        exit 0
+    done
 done
-
-# 3. Create GUI list dialog with Application Name, Package Name, Version, Format, and System
-SELECAO=$(echo -e "$OPCOES" | zenity --list --title="$TXT_TABLE_TITLE" \
-    --text="$TXT_TABLE_HEADER" \
-    --column="$TXT_COL_APP" --column="$TXT_COL_PKG" --column="$TXT_COL_VER" --column="$TXT_COL_FORMAT" --column="$TXT_COL_SYSTEM" \
-    --print-column=ALL \
-    --width=820 --height=450 \
-    --ok-label="$TXT_BTN_UNINSTALL" \
-    --cancel-label="$TXT_BTN_CANCEL" 2>/dev/null)
-    
-[ -z "$SELECAO" ] && exit 0
-
-# 4. Extract fields using delimiter '|'
-APP_NAME=$(echo "$SELECAO" | cut -d'|' -f1)
-PACOTE=$(echo "$SELECAO" | cut -d'|' -f2)
-VERSAO=$(echo "$SELECAO" | cut -d'|' -f3)
-FORMATO=$(echo "$SELECAO" | cut -d'|' -f4)
-SISTEMA=$(echo "$SELECAO" | cut -d'|' -f5)
-
-# 5. Ask confirmation before uninstalling
-if [ "$APP_NAME" != "$PACOTE" ] && [ -n "$APP_NAME" ] && [ "$APP_NAME" != "-" ]; then
-    MSG_CONFIRM=$(printf "$TXT_CONFIRM_MSG_APP" "$APP_NAME" "$PACOTE" "$VERSAO" "$FORMATO")
-else
-    MSG_CONFIRM=$(printf "$TXT_CONFIRM_MSG_PKG" "$PACOTE" "$VERSAO" "$FORMATO")
-fi
-
-# Add warning if it is a system application (indicated by red circle)
-if [[ "$SISTEMA" == *"🔴"* ]]; then
-    MSG_CONFIRM="$TXT_CONFIRM_SYSTEM_WARN\n\n$MSG_CONFIRM"
-fi
-
-zenity --question --title="$TXT_CONFIRM_TITLE" \
-    --text="$MSG_CONFIRM" \
-    --ok-label="$TXT_BTN_CONFIRM_YES" \
-    --cancel-label="$TXT_BTN_CANCEL" \
-    --default-cancel 2>/dev/null
-
-[ $? -ne 0 ] && exit 0
-
-# 6. Run uninstallation in terminal according to package format
-case "$FORMATO" in
-    Snap) gnome-terminal -- bash -c "sudo snap remove $PACOTE; echo ''; read -p '$TXT_TERMINAL_EXIT'" ;;
-    Apt) gnome-terminal -- bash -c "sudo apt remove $PACOTE; echo ''; read -p '$TXT_TERMINAL_EXIT'" ;;
-    Flatpak) gnome-terminal -- bash -c "sudo flatpak uninstall $PACOTE; echo ''; read -p '$TXT_TERMINAL_EXIT'" ;;
-esac

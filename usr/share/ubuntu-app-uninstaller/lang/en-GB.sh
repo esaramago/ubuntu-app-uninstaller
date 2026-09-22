@@ -5,6 +5,7 @@ TXT_TITLE="Uninstaller"
 TXT_SEARCH_PROMPT="Application name"
 TXT_BTN_SEARCH="Search"
 TXT_BTN_CANCEL="Cancel"
+TXT_BTN_BACK="Back"
 
 TXT_SEARCH_MIN_CHARS="The search term must have at least 2 characters."
 

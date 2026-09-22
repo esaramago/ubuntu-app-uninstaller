@@ -5,6 +5,7 @@ TXT_TITLE="Desinstalador"
 TXT_SEARCH_PROMPT="Nome da aplicação"
 TXT_BTN_SEARCH="Procurar"
 TXT_BTN_CANCEL="Cancelar"
+TXT_BTN_BACK="Voltar"
 
 TXT_SEARCH_MIN_CHARS="A pesquisa tem de ter, no mínimo, 2 caracteres."
 
