@@ -55,7 +55,8 @@ This script automatically verifies and sets the required file permissions, extra
    chmod 755 DEBIAN
    chmod 644 DEBIAN/control
    chmod 755 usr/local/bin/uninstaller
-   chmod 644 usr/share/applications/unninstaller.desktop
+   chmod 644 usr/share/applications/uninstaller.desktop
+   chmod 644 usr/share/pixmaps/*
    ```
 
 2. Build the `.deb` package:
