@@ -4,11 +4,69 @@
 # that may cause conflicts with host system GTK/glibc libraries when opening the terminal
 unset GTK_PATH GTK_EXE_PREFIX GTK_IM_MODULE_FILE GIO_MODULE_DIR GSETTINGS_SCHEMA_DIR GDK_PIXBUF_MODULE_FILE GDK_PIXBUF_MODULEDIR LOCPATH
 
+# Parse command line options
+REQUESTED_LANG=""
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --lang|-l)
+            REQUESTED_LANG="$2"
+            shift 2
+            ;;
+        --lang=*)
+            REQUESTED_LANG="${1#*=}"
+            shift
+            ;;
+        *)
+            shift
+            ;;
+    esac
+done
+
+# Determine active language:
+# 1. Command-line argument (--lang / -l)
+# 2. Environment variable (APP_LANG)
+# 3. System locale (LC_ALL, LC_MESSAGES, LANG)
+TARGET_LANG="${REQUESTED_LANG:-${APP_LANG:-${LC_ALL:-${LC_MESSAGES:-${LANG:-en_GB}}}}}"
+
+case "$TARGET_LANG" in
+    pt*|PT*)
+        ACTIVE_LANG="pt-PT"
+        ;;
+    *)
+        ACTIVE_LANG="en-GB"
+        ;;
+esac
+
+# Locate translations directory (supports local development, /usr/local, and system /usr)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -d "$SCRIPT_DIR/../../share/ubuntu-app-uninstaller/lang" ]; then
+    LANG_DIR="$(cd "$SCRIPT_DIR/../../share/ubuntu-app-uninstaller/lang" && pwd)"
+elif [ -d "$SCRIPT_DIR/../share/ubuntu-app-uninstaller/lang" ]; then
+    LANG_DIR="$(cd "$SCRIPT_DIR/../share/ubuntu-app-uninstaller/lang" && pwd)"
+elif [ -d "/usr/share/ubuntu-app-uninstaller/lang" ]; then
+    LANG_DIR="/usr/share/ubuntu-app-uninstaller/lang"
+elif [ -d "/usr/local/share/ubuntu-app-uninstaller/lang" ]; then
+    LANG_DIR="/usr/local/share/ubuntu-app-uninstaller/lang"
+else
+    LANG_DIR=""
+fi
+
+# Load fallback translations (en-GB) first, then target language
+if [ -n "$LANG_DIR" ] && [ -f "$LANG_DIR/en-GB.sh" ]; then
+    # shellcheck source=/dev/null
+    source "$LANG_DIR/en-GB.sh"
+fi
+
+if [ -n "$LANG_DIR" ] && [ "$ACTIVE_LANG" != "en-GB" ] && [ -f "$LANG_DIR/${ACTIVE_LANG}.sh" ]; then
+    # shellcheck source=/dev/null
+    source "$LANG_DIR/${ACTIVE_LANG}.sh"
+fi
+
 APP=""
 
 while true; do
     # 1. Prompt for application name or search term
-    APP=$(zenity --entry --title="Desinstalador" --text="Nome da aplicação" --entry-text="$APP" --ok-label="Procurar" --cancel-label="Cancelar" 2>/dev/null)
+    APP=$(zenity --entry --title="$TXT_TITLE" --text="$TXT_SEARCH_PROMPT" --entry-text="$APP" --ok-label="$TXT_BTN_SEARCH" --cancel-label="$TXT_BTN_CANCEL" 2>/dev/null)
     [ $? -ne 0 ] && exit 0
     [ -z "$APP" ] && continue
 
@@ -49,11 +107,11 @@ while true; do
                     is_system="-"
                     case "$pkg" in
                         snapd|core|core[0-9]*|bare|gtk-common-themes|gnome-[0-9]*)
-                            is_system="🔴 Sistema"
+                            is_system="$TXT_SYSTEM_BADGE"
                             ;;
                         *)
                             if echo "$rest" | grep -qi -E "\b(base|snapd)\b"; then
-                                is_system="🔴 Sistema"
+                                is_system="$TXT_SYSTEM_BADGE"
                             fi
                             ;;
                     esac
@@ -86,7 +144,7 @@ while true; do
             } | sort -u
         )
 
-        APT_RES=$(awk -F'\t' '
+        APT_RES=$(awk -F'\t' -v sys_badge="$TXT_SYSTEM_BADGE" '
             FNR == 1 { file_idx++ }
             file_idx == 1 {
                 if ($1 != "") sys_pkgs[$1] = 1
@@ -107,7 +165,7 @@ while true; do
                     name = (pkg in names ? names[pkg] : pkg)
                     full = name " " pkg " " summary
                     if (index(tolower(full), tolower(ENVIRON["APP"])) > 0) {
-                        is_sys = (prio == "required" || prio == "important" || essential == "yes" || protected == "yes" || (pkg in sys_pkgs) ? "🔴 Sistema" : "-")
+                        is_sys = (prio == "required" || prio == "important" || essential == "yes" || protected == "yes" || (pkg in sys_pkgs) ? sys_badge : "-")
                         print name "\n" pkg "\n" ver "\nApt\n" is_sys
                     }
                 }
@@ -120,7 +178,8 @@ while true; do
 
     # If no packages found, display warning and return to search
     if [ -z "$OPCOES" ]; then
-        zenity --error --text="Nenhum pacote encontrado para o termo '$APP'." 2>/dev/null
+        err_msg=$(printf "$TXT_NO_PACKAGES_FOUND" "$APP")
+        zenity --error --title="$TXT_TITLE" --text="$err_msg" 2>/dev/null
         continue
     fi
 
@@ -128,12 +187,13 @@ while true; do
 done
 
 # 3. Create GUI list dialog with Application Name, Package Name, Version, Format, and System
-SELECAO=$(echo -e "$OPCOES" | zenity --list --title="Resultados da Pesquisa" \
-    --text="Selecione o pacote que deseja desinstalar:" \
-    --column="Aplicação" --column="Pacote" --column="Versão" --column="Formato" --column="Sistema" \
+SELECAO=$(echo -e "$OPCOES" | zenity --list --title="$TXT_TABLE_TITLE" \
+    --text="$TXT_TABLE_HEADER" \
+    --column="$TXT_COL_APP" --column="$TXT_COL_PKG" --column="$TXT_COL_VER" --column="$TXT_COL_FORMAT" --column="$TXT_COL_SYSTEM" \
     --print-column=ALL \
     --width=820 --height=450 \
-    --ok-label="🗑️ Desinstalar" 2>/dev/null)
+    --ok-label="$TXT_BTN_UNINSTALL" \
+    --cancel-label="$TXT_BTN_CANCEL" 2>/dev/null)
     
 [ -z "$SELECAO" ] && exit 0
 
@@ -146,27 +206,27 @@ SISTEMA=$(echo "$SELECAO" | cut -d'|' -f5)
 
 # 5. Ask confirmation before uninstalling
 if [ "$APP_NAME" != "$PACOTE" ] && [ -n "$APP_NAME" ] && [ "$APP_NAME" != "-" ]; then
-    MSG_CONFIRM="Tem a certeza de que deseja desinstalar <b>$APP_NAME</b> (pacote: <i>$PACOTE</i>, v$VERSAO) [$FORMATO]?\nEsta ação pode remover dados associados."
+    MSG_CONFIRM=$(printf "$TXT_CONFIRM_MSG_APP" "$APP_NAME" "$PACOTE" "$VERSAO" "$FORMATO")
 else
-    MSG_CONFIRM="Tem a certeza de que deseja desinstalar o pacote <b>$PACOTE</b> (v$VERSAO) [$FORMATO]?\nEsta ação pode remover dados associados."
+    MSG_CONFIRM=$(printf "$TXT_CONFIRM_MSG_PKG" "$PACOTE" "$VERSAO" "$FORMATO")
 fi
 
-# Add warning if it is a system application
-if [[ "$SISTEMA" == *"Sistema"* ]]; then
-    MSG_CONFIRM="<span foreground='red'><b>⚠️ ATENÇÃO: Esta é uma aplicação de sistema!</b>\nA sua desinstalação pode danificar ou tornar o sistema instável.</span>\n\n$MSG_CONFIRM"
+# Add warning if it is a system application (indicated by red circle)
+if [[ "$SISTEMA" == *"🔴"* ]]; then
+    MSG_CONFIRM="$TXT_CONFIRM_SYSTEM_WARN\n\n$MSG_CONFIRM"
 fi
 
-zenity --question --title="Confirmar Desinstalação" \
+zenity --question --title="$TXT_CONFIRM_TITLE" \
     --text="$MSG_CONFIRM" \
-    --ok-label="🗑️ Sim, Desinstalar" \
-    --cancel-label="Cancelar" \
+    --ok-label="$TXT_BTN_CONFIRM_YES" \
+    --cancel-label="$TXT_BTN_CANCEL" \
     --default-cancel 2>/dev/null
 
 [ $? -ne 0 ] && exit 0
 
 # 6. Run uninstallation in terminal according to package format
 case "$FORMATO" in
-    Snap) gnome-terminal -- bash -c "sudo snap remove $PACOTE; echo ''; read -p 'Concluído! Pressione Enter para sair...'" ;;
-    Apt) gnome-terminal -- bash -c "sudo apt remove $PACOTE; echo ''; read -p 'Concluído! Pressione Enter para sair...'" ;;
-    Flatpak) gnome-terminal -- bash -c "sudo flatpak uninstall $PACOTE; echo ''; read -p 'Concluído! Pressione Enter para sair...'" ;;
+    Snap) gnome-terminal -- bash -c "sudo snap remove $PACOTE; echo ''; read -p '$TXT_TERMINAL_EXIT'" ;;
+    Apt) gnome-terminal -- bash -c "sudo apt remove $PACOTE; echo ''; read -p '$TXT_TERMINAL_EXIT'" ;;
+    Flatpak) gnome-terminal -- bash -c "sudo flatpak uninstall $PACOTE; echo ''; read -p '$TXT_TERMINAL_EXIT'" ;;
 esac

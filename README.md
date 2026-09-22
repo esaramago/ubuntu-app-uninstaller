@@ -27,9 +27,31 @@ You can run and test the script directly without building or installing the pack
    ```
 
 2. Run the script:
+2. Run the script (automatically uses your system locale):
    ```bash
    ./usr/local/bin/uninstaller
    ```
+
+   You can also specify a language manually using `--lang` (or `-l`):
+   ```bash
+   # Run in Portuguese (pt-PT)
+   ./usr/local/bin/uninstaller --lang pt
+
+   # Run in British English (en-GB)
+   ./usr/local/bin/uninstaller --lang en
+   ```
+
+---
+
+## 🌐 Multi-Language Support (i18n)
+
+The application supports multiple languages and automatically detects your system locale:
+- **Portuguese (`pt-PT`)**: Default for any Portuguese system locale (`pt_*`).
+- **English (`en-GB`)**: Default fallback for other locales.
+
+Translation files are modular and stored in:
+- `usr/share/ubuntu-app-uninstaller/lang/pt-PT.sh`
+- `usr/share/ubuntu-app-uninstaller/lang/en-GB.sh`
 
 ---
 
@@ -64,24 +86,6 @@ This script automatically verifies and sets the required file permissions, extra
    dpkg-deb --root-owner-group --build . "ubuntu-app-uninstaller_$(awk -F': ' '/^Version:/ {print $2}' DEBIAN/control).deb"
    ```
 </details>
-
----
-
-## 🚀 Installation
-
-Install the generated `.deb` package using `apt`:
-
-```bash
-sudo apt install ./ubuntu-app-uninstaller_*.deb
-```
-
-## 🗑️ Uninstallation
-
-To remove the application from your system:
-
-```bash
-sudo apt remove uninstaller
-```
 
 ---
 
