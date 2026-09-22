@@ -1,0 +1,6 @@
+Package: Uninstaller
+Version: 1.0
+Architecture: all
+Maintainer: Emanuel Saramago <dev@emanuelsaramago.com>
+Depends: bash, zenity
+Description: Find a Apt, Snap or Flatpak package and uninstall it.

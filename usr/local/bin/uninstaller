@@ -1,0 +1,54 @@
+#!/bin/bash
+
+# 1. Pede o nome ou parte do nome da aplicação
+APP=$(zenity --entry --title="Desinstalador" --text="Nome da aplicação")
+[ -z "$APP" ] && exit 0
+
+# 2. Procura com 'grep -i' e formata a saída em linhas (Célula 1 \n Célula 2) para o Zenity construir a tabela
+# - Snap: O nome do pacote está na coluna 1
+SNAP_RES=$(snap list 2>/dev/null | tail -n +2 | grep -i "$APP" | awk '{print "Snap\n" $1}')
+
+# - APT: O nome do pacote está na coluna 2 (filtramos apenas os instalados com "^ii")
+APT_RES=$(dpkg -l 2>/dev/null | grep "^ii" | grep -i "$APP" | awk '{print "Apt\n" $2}')
+
+# - Flatpak: O ID do pacote necessário para desinstalar está na coluna 2
+FLATPAK_RES=$(flatpak list 2>/dev/null | grep -i "$APP" | awk '{print "Flatpak\n" $2}')
+
+# Agrupa todos os resultados e remove linhas vazias
+OPCOES=$(echo -e "$SNAP_RES\n$APT_RES\n$FLATPAK_RES" | awk NF)
+
+# Se não encontrar nada, avisa e sai
+if [ -z "$OPCOES" ]; then
+    zenity --error --text="Nenhum pacote encontrado para o termo '$APP'."
+    exit 0
+fi
+
+# 3. Cria a tabela gráfica. --print-column=ALL devolve "Formato|Pacote" quando escolhe a linha.
+SELECAO=$(echo -e "$OPCOES" | zenity --list --title="Resultados da Pesquisa" \
+    --text="Selecione o pacote que deseja desinstalar:" \
+    --column="Formato" --column="Pacote" \
+    --print-column=ALL \
+    --width=500 --height=400 \
+    --ok-label="🗑️ Desinstalar")
+    
+[ -z "$SELECAO" ] && exit 0
+
+# 4. Separa a escolha pelo caractere '|'
+FORMATO=$(echo "$SELECAO" | cut -d'|' -f1)
+PACOTE=$(echo "$SELECAO" | cut -d'|' -f2)
+
+# 5. Pede confirmação antes de desinstalar
+zenity --question --title="Confirmar Desinstalação" \
+    --text="Tem a certeza de que deseja desinstalar o pacote <b>$PACOTE</b> ($FORMATO)?\nEsta ação pode remover dados associados." \
+    --ok-label="🗑️ Sim, Desinstalar" \
+    --cancel-label="Cancelar" \
+    --default-cancel
+
+[ $? -ne 0 ] && exit 0
+
+# 6. Executa a desinstalação no terminal de acordo com o formato
+case "$FORMATO" in
+    Snap) gnome-terminal -- bash -c "sudo snap remove $PACOTE; echo ''; read -p 'Concluído! Pressione Enter para sair...'" ;;
+    Apt) gnome-terminal -- bash -c "sudo apt remove $PACOTE; echo ''; read -p 'Concluído! Pressione Enter para sair...'" ;;
+    Flatpak) gnome-terminal -- bash -c "sudo flatpak uninstall $PACOTE; echo ''; read -p 'Concluído! Pressione Enter para sair...'" ;;
+esac
