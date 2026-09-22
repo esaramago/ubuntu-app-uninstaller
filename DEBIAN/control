@@ -1,4 +1,4 @@
-Package: Uninstaller
+Package: ubuntu-app-uninstaller
 Version: 1.0
 Architecture: all
 Maintainer: Emanuel Saramago <dev@emanuelsaramago.com>
