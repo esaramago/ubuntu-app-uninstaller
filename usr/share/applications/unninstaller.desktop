@@ -1,6 +1,6 @@
 [Desktop Entry]
 Name=Uninstaller
-Comment=Search and uninstall Apt, Snap and Flatpak packages
+Comment=Search and uninstall APT, Snap and Flatpak packages
 Exec=/usr/local/bin/uninstaller
 Icon=system-software-install
 Terminal=false

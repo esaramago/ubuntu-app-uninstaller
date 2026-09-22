@@ -1,7 +1,11 @@
 #!/bin/bash
 
+# Limpa variáveis de ambiente herdadas de aplicações Snap/Flatpak (ex: VS Code)
+# que causam conflito com bibliotecas GTK/glibc do sistema host ao abrir o terminal
+unset GTK_PATH GTK_EXE_PREFIX GTK_IM_MODULE_FILE GIO_MODULE_DIR GSETTINGS_SCHEMA_DIR GDK_PIXBUF_MODULE_FILE GDK_PIXBUF_MODULEDIR LOCPATH
+
 # 1. Pede o nome ou parte do nome da aplicação
-APP=$(zenity --entry --title="Desinstalador" --text="Nome da aplicação")
+APP=$(zenity --entry --title="Desinstalador" --text="Nome da aplicação" 2>/dev/null)
 [ -z "$APP" ] && exit 0
 
 # 2. Procura com 'grep -i' e formata a saída em linhas (Célula 1 \n Célula 2) para o Zenity construir a tabela
@@ -19,7 +23,7 @@ OPCOES=$(echo -e "$SNAP_RES\n$APT_RES\n$FLATPAK_RES" | awk NF)
 
 # Se não encontrar nada, avisa e sai
 if [ -z "$OPCOES" ]; then
-    zenity --error --text="Nenhum pacote encontrado para o termo '$APP'."
+    zenity --error --text="Nenhum pacote encontrado para o termo '$APP'." 2>/dev/null
     exit 0
 fi
 
@@ -29,7 +33,7 @@ SELECAO=$(echo -e "$OPCOES" | zenity --list --title="Resultados da Pesquisa" \
     --column="Formato" --column="Pacote" \
     --print-column=ALL \
     --width=500 --height=400 \
-    --ok-label="🗑️ Desinstalar")
+    --ok-label="🗑️ Desinstalar" 2>/dev/null)
     
 [ -z "$SELECAO" ] && exit 0
 
@@ -42,7 +46,7 @@ zenity --question --title="Confirmar Desinstalação" \
     --text="Tem a certeza de que deseja desinstalar o pacote <b>$PACOTE</b> ($FORMATO)?\nEsta ação pode remover dados associados." \
     --ok-label="🗑️ Sim, Desinstalar" \
     --cancel-label="Cancelar" \
-    --default-cancel
+    --default-cancel 2>/dev/null
 
 [ $? -ne 0 ] && exit 0
 

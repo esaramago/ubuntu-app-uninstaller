@@ -37,29 +37,32 @@ You can run and test the script directly without building or installing the pack
 
 This application is written in Bash and does not require binary compilation, but it needs to be **packaged** into a `.deb` file for distribution and system-wide installation.
 
-### 1. Set File Permissions
-Ensure all directories and files have the appropriate permissions before building:
+### Automated Build (Recommended)
+
+Run the included build script from the project root directory:
 
 ```bash
-chmod 755 DEBIAN
-chmod 644 DEBIAN/control
-chmod 755 usr/local/bin/uninstaller
-chmod 644 usr/share/applications/unninstaller.desktop
+./build.sh
 ```
 
-### 2. Build the `.deb` Package
-From the project root directory (`ubuntu-app-uninstaller`), run:
+This script automatically verifies and sets the required file permissions, extracts the version from `DEBIAN/control`, and outputs `ubuntu-app-uninstaller_<version>.deb` (e.g. `ubuntu-app-uninstaller_1.0.deb`).
 
-```bash
-dpkg-deb --root-owner-group --build . ../uninstaller_1.0_all.deb
-```
+<details>
+<summary>Manual Build Instructions</summary>
 
-This creates `uninstaller_1.0_all.deb` in the parent directory.
+1. Set the appropriate permissions:
+   ```bash
+   chmod 755 DEBIAN
+   chmod 644 DEBIAN/control
+   chmod 755 usr/local/bin/uninstaller
+   chmod 644 usr/share/applications/unninstaller.desktop
+   ```
 
-To build it inside the current directory instead:
-```bash
-dpkg-deb --root-owner-group --build . uninstaller_1.0_all.deb
-```
+2. Build the `.deb` package:
+   ```bash
+   dpkg-deb --root-owner-group --build . "ubuntu-app-uninstaller_$(awk -F': ' '/^Version:/ {print $2}' DEBIAN/control).deb"
+   ```
+</details>
 
 ---
 
@@ -68,22 +71,8 @@ dpkg-deb --root-owner-group --build . uninstaller_1.0_all.deb
 Install the generated `.deb` package using `apt`:
 
 ```bash
-sudo apt install ./uninstaller_1.0_all.deb
+sudo apt install ./ubuntu-app-uninstaller_*.deb
 ```
-*(Using `apt` automatically resolves and installs any missing runtime dependencies, such as `zenity`).*
-
----
-
-## 🖥️ Running the Application
-
-- **Via Terminal:**
-  ```bash
-  uninstaller
-  ```
-- **Via Application Menu:**
-  Search for **"Uninstaller"** in the GNOME Application Menu / Ubuntu Dash.
-
----
 
 ## 🗑️ Uninstallation
 
