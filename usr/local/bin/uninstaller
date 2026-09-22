@@ -5,7 +5,7 @@
 unset GTK_PATH GTK_EXE_PREFIX GTK_IM_MODULE_FILE GIO_MODULE_DIR GSETTINGS_SCHEMA_DIR GDK_PIXBUF_MODULE_FILE GDK_PIXBUF_MODULEDIR LOCPATH
 
 # 1. Prompt for application name or search term
-APP=$(zenity --entry --title="Desinstalador" --text="Nome da aplicação" 2>/dev/null)
+APP=$(zenity --entry --title="Desinstalador" --text="Nome da aplicação" --ok-label="Procurar" --cancel-label="Cancelar" 2>/dev/null)
 [ -z "$APP" ] && exit 0
 
 export APP
